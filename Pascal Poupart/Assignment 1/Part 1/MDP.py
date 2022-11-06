@@ -134,7 +134,6 @@ class MDP:
         past_policy = initialPolicy
         V = np.zeros(self.nStates)
         iterId = 0
-        epsilon = 1
         
         while iterId <= nIterations:
             V = self.evaluatePolicy(past_policy)
