@@ -57,10 +57,12 @@ class RL:
         policy = np.zeros(self.mdp.nStates,int)
         temperature = float(temperature)
         counts = np.zeros([self.mdp.nActions, self.mdp.nStates])
+        cum_rewards = np.zeros(nEpisodes, )
 
 
         for episode in range(nEpisodes):
             s = s0
+            discounted_reward = 0
 
             for step in range(nSteps):
                 # Action selection
@@ -87,6 +89,11 @@ class RL:
 
                 s = s_prime
 
+                # Discounted reward
+                discounted_reward += self.mdp.discount**step * r
+
+            cum_rewards[episode] = discounted_reward
         policy = np.argmax(Q, axis=0)
 
-        return [Q,policy] 
+
+        return [Q,policy, cum_rewards] 
