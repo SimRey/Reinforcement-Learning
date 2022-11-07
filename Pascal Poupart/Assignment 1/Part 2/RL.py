@@ -80,14 +80,13 @@ class RL:
                 counts[a, s] += 1.
 
                 # Learning rate
-                alpha = counts[a,s]
-                
-                cumulative_absolute_temporal_difference += abs(r + self.mdp.discount * np.amax(Q[:, next_s]) - Q[a, s])
-                Q[a, s] += (1. / counts[a, s]) * (r + self.mdp.discount * np.amax(Q[:, next_s]) - Q[a, s])
-                s = np.copy(next_s)
-            average_absolute_temporal_differences.append(cumulative_absolute_temporal_difference/nSteps)
-            ep_rewards.append(discounted_rewards)
+                alpha = 1/counts[a,s]
+
+                # Update Q
+                Q[a,s] += alpha*(r + self.mdp.discount*np.amax(Q[:,s_prime], axis=0) - Q[a,s])
+
+                s = s_prime
 
         policy = np.argmax(Q, axis=0)
 
-        return [Q,policy,np.array(ep_rewards),np.array(average_absolute_temporal_differences)]    
+        return [Q,policy] 
