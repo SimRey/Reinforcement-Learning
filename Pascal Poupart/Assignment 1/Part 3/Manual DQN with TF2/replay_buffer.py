@@ -3,8 +3,8 @@ import tensorflow as tf
 
 class ReplayBuffer(object):
     def __init__(self, max_size, input_shape, n_actions):
-        self.mem_size = max_size
-        self.mem_cntr = 0
+        self.mem_size = max_size # Size of Replay Buffer
+        self.mem_cntr = 0        # Counter
         self.state_memory = np.zeros((self.mem_size, *input_shape),
                                      dtype=np.float32)
         self.new_state_memory = np.zeros((self.mem_size, *input_shape),
@@ -16,6 +16,7 @@ class ReplayBuffer(object):
 
     def store_transition(self, state, action, reward, state_, done):
         index = self.mem_cntr % self.mem_size
+        
         self.state_memory[index] = state
         self.new_state_memory[index] = state_
         self.action_memory[index] = action
