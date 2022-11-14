@@ -82,5 +82,4 @@ class Agent:
         self.q_eval.optimizer.apply_gradients(zip(grads, params))
 
         self.learn_step_counter += 1
-
         self.decrement_epsilon()
