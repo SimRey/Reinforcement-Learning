@@ -5,7 +5,7 @@ import tensorflow.keras as keras
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.models import Sequential, clone_model 
 from tensorflow.keras.optimizers import Adam
-from rep_buf import ReplayBuffer
+from replay_buffer import ReplayBuffer
 
 
 def build_dqn(input_dims, n_actions, fc1_dims, fc2_dims):
