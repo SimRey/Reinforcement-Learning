@@ -12,7 +12,7 @@ def build_dqn(input_dims, n_actions, fc1_dims, fc2_dims):
     """Function used to build the neural network used by the agent"""
 
     model = Sequential([
-        Dense(fc1_dims, input_shape=(input_dims[0],), activation='relu'),
+        Dense(fc1_dims, input_shape=input_dims, activation='relu'),
         Dense(fc2_dims, activation='relu'),
         Dense(n_actions, activation="linear")
     ])
@@ -97,7 +97,7 @@ class Agent:
         q_next = self.model.predict(np.array(states_))  
 
         # Replace the targets values with the according function
-        targets[batch_index, actions] = rewards + self.gamma * np.max(q_next, axis=1)*dones
+        targets[batch_index, actions] = rewards + self.gamma * np.max(q_next, axis=1)*(1 - np.array([dones]))
         
         # Fit the model based on the states and the updated targets for 1 epoch
         self.model.fit(np.array(states), np.array(targets), epochs=1, verbose=0) 
