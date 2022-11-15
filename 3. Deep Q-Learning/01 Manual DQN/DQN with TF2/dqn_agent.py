@@ -74,7 +74,10 @@ class Agent:
 
     def decrement_epsilon(self):
         """Funtion used to compute the decrement of epsilon"""
-        self.epsilon -= self.eps_dec if self.epsilon > self.eps_min else self.eps_min
+        if self.epsilon > self.eps_min:
+            self.epsilon -= self.eps_dec
+        else:
+            self.epsilon = self.eps_min
 
 
     def learn(self):
