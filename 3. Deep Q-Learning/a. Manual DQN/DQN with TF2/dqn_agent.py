@@ -21,9 +21,8 @@ def build_dqn(input_dims, n_actions, fc1_dims, fc2_dims):
     
 
 class Agent:
-    def __init__(self, gamma, epsilon, lr, n_actions, input_dims,
-                 mem_size, batch_size, eps_min=0.01, eps_dec=5e-7,
-                 replace=100):
+    def __init__(self, gamma, epsilon, lr, n_actions, input_dims, mem_size, batch_size, 
+                 eps_min=0.01, eps_dec=5e-7, replace=100):
         
         self.gamma = gamma
         self.epsilon = epsilon
