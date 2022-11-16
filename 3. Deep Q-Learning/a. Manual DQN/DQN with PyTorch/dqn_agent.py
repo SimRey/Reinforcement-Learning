@@ -22,8 +22,8 @@ class DeepQNetwork(nn.Module):
         self.fc2 = nn.Linear(self.fc1_dims, self.fc2_dims)
         self.fc3 = nn.Linear(self.fc2_dims, self.n_actions)  
 
-    def forward(self, state):
-        x = F.relu(self.fc1(state))
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         actions = self.fc3(x)
 
@@ -53,7 +53,7 @@ class Agent(object):
         self.target = DeepQNetwork(self.lr, self.input_dims, 256, 256, self.n_actions)
 
         self.criterion = nn.MSELoss()
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
 
 
     def store_transition(self, state, action, reward, state_, done):
@@ -67,7 +67,7 @@ class Agent(object):
 
         if np.random.random() > self.epsilon:
             state = T.tensor([observation],dtype=T.float)
-            actions = self.q_eval.forward(state)
+            actions = self.model.forward(state)
             action = T.argmax(actions).item()
         else:
             action = np.random.choice(self.action_space)
@@ -93,25 +93,29 @@ class Agent(object):
 
     
     def learn(self):
-        if self.memory.mem_cntr < self.batch_size:
+        if len(self.memory.replay_buffer) < self.batch_size:
             return
 
-        self.model.optimizer.zero_grad()
+        self.optimizer.zero_grad()
 
         self.replace_target_network()
 
         states, actions, rewards, states_, dones = self.memory.mini_batch(self.batch_size)
         indices = np.arange(self.batch_size)
 
-        q_pred = self.q_eval.forward(states)[indices, actions]
-        q_next = self.q_next.forward(states_).max(dim=1)[0]
+        # Predict targets for all states from the sample
+        targets = self.target.forward(states)
+        q_values = self.model.forward(states)
+        
+        # Predict Q-Values for all new states from the sample
+        q_next = T.max(self.model.forward(states_), dim = 1).values
 
-        q_next[dones] = 0.0
-        q_target = rewards + self.gamma*q_next
+        # Replace the targets values with the according function
+        targets[indices, actions] = rewards + self.gamma * q_next*(1 - dones)
 
-        loss = self.q_eval.loss(q_target, q_pred)
+        loss = self.criterion(targets, q_values)
         loss.backward()
-        self.q_eval.optimizer.step()
+        self.optimizer.step()
         self.learn_step_counter += 1
 
         self.decrement_epsilon()

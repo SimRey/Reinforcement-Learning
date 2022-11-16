@@ -16,11 +16,11 @@ class ReplayBuffer(object):
         zipped_batch = list(zip(*batch))
         states, actions, rewards, new_states, dones = zipped_batch
 
-        states = T.tensor(states)
-        actions = T.tensor(actions)
-        rewards = T.tensor(rewards)
-        new_states = T.tensor(new_states)
-        dones = T.tensor(dones)
+        states = T.FloatTensor(states)
+        actions = T.LongTensor(actions)
+        rewards = T.FloatTensor(rewards)
+        new_states = T.FloatTensor(new_states)
+        dones = T.FloatTensor(dones)
 
         return states, actions, rewards, new_states, dones
 
