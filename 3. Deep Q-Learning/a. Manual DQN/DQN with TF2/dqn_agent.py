@@ -22,7 +22,7 @@ def build_dqn(input_dims, n_actions, fc1_dims, fc2_dims):
 
 class Agent:
     def __init__(self, gamma, epsilon, lr, n_actions, input_dims, mem_size, batch_size, 
-                 eps_min=0.01, eps_dec=5e-7, replace=100):
+                 eps_min=0.01, eps_dec=5e-7, replace=100, fname='dqn_model.h5'):
         
         self.gamma = gamma
         self.epsilon = epsilon
@@ -43,6 +43,9 @@ class Agent:
         self.target = clone_model(self.model)
 
         self.model.compile(optimizer=Adam(learning_rate=lr), loss="mse")
+
+        self.model_file = fname
+
 
 
 
@@ -108,3 +111,8 @@ class Agent:
         self.decrement_epsilon()
 
 
+    def save_model(self):
+        self.model.save(self.model_file)
+    
+    def load_model(self):
+        self.model = load_model(self.model_file)
