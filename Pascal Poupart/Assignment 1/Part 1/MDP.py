@@ -164,8 +164,7 @@ class MDP:
         iterId -- # of iterations performed: scalar
         epsilon -- ||V^n-V^n+1||_inf: scalar'''
 
-        # temporary values to ensure that the code compiles until this
-        # function is coded
+        
         V = np.zeros(self.nStates)
         iterId = 0
         epsilon = 0
