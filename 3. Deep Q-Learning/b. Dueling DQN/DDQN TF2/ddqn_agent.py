@@ -8,19 +8,37 @@ from tensorflow.keras.optimizers import Adam
 from replay_buffer import ReplayBuffer
 
 
-def build_dqn(input_dims, n_actions, fc1_dims, fc2_dims):
-    """Function used to build the neural network used by the agent"""
+class DDQN(keras.Model):
+    def __init__(self, n_actions, fc1_dims, fc2_dims):
+        super(DDQN, self).__init__()
+        self.dense1 = Dense(fc1_dims, activation='relu')
+        self.dense2 = Dense(fc2_dims, activation='relu')
+        self.V = Dense(1, activation=None) # Value layer --> single value
+        self.A = Dense(n_actions, activation=None) # Action layer
+    
+    def call(self, state):
+        x = self.dense1(state)
+        x = self.dense2(x)
+        V = self.V(x)
+        A = self.A(x)
 
-    model = Sequential([
-        Dense(fc1_dims, input_shape=input_dims, activation='relu'),
-        Dense(fc2_dims, activation='relu'),
-        Dense(n_actions, activation="linear")
-    ])
+        Q = (V + (A - tf.math.reduce_mean(A, axis=1, keepdims=True)))
+        return Q
+    
+    def advantage(self, state):
+    
+        x = self.dense1(state)
+        x = self.dense2(x)
+        A = self.A(x)
 
-    return model
+        return A
+
+
+
+
     
 
-class DDQN:
+class Agent:
     def __init__(self, gamma, epsilon, lr, n_actions, input_dims, mem_size, batch_size, 
                  eps_min=0.01, eps_dec=5e-7, replace=100, fname='dqn_model.h5'):
         
@@ -39,8 +57,8 @@ class DDQN:
 
         self.memory = ReplayBuffer(mem_size)
 
-        self.model = build_dqn(input_dims, n_actions, 256, 256)
-        self.target = clone_model(self.model)
+        self.model = DDQN(n_actions, 256, 256)
+        self.target = DDQN(n_actions, 256, 256)
 
         self.model.compile(optimizer=Adam(learning_rate=lr), loss="mse")
 
