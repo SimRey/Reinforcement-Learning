@@ -96,13 +96,17 @@ class Agent:
         batch_index = np.arange(self.batch_size, dtype=np.int32)
         
         # Predict targets for all states from the sample
-        targets = self.target.predict(np.array(states))
+        targets = self.model.predict(np.array(states))
         
         # Predict Q-Values for all new states from the sample
-        q_next = self.model.predict(np.array(states_))  
+        q_next = self.model.predict(np.array(states_))
+        q_next_t = self.target.predict(np.array(states_))
+
+        # Extract the max actions
+        max_actions = np.argmax(q_next, axis=1)
 
         # Replace the targets values with the according function
-        targets[batch_index, actions] = rewards + self.gamma * np.max(q_next, axis=1)*(1 - np.array([dones]))
+        targets[batch_index, actions] = rewards + self.gamma * q_next_t[batch_index, max_actions]*np.array([dones])
         
         # Fit the model based on the states and the updated targets for 1 epoch
         self.model.fit(np.array(states), np.array(targets), epochs=1, verbose=0) 
