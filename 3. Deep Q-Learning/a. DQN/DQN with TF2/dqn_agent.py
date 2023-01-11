@@ -103,6 +103,7 @@ class Agent:
         self.model.fit(np.array(states), np.array(targets), epochs=1, verbose=0) 
 
         self.learn_step_counter += 1
+        self.decrement_epsilon()
 
 
     def save_model(self):
