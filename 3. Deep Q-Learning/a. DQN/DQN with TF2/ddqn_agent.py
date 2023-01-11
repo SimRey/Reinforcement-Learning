@@ -106,7 +106,7 @@ class Agent:
         max_actions = np.argmax(q_next, axis=1)
 
         # Replace the targets values with the according function
-        targets[batch_index, actions] = rewards + self.gamma * q_next_t[batch_index, max_actions]*np.array([dones])
+        targets[batch_index, actions] = rewards + self.gamma * q_next_t[batch_index, max_actions]*(1-np.array([dones]))
         
         # Fit the model based on the states and the updated targets for 1 epoch
         self.model.fit(np.array(states), np.array(targets), epochs=1, verbose=0) 
