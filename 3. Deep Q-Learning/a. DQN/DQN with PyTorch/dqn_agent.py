@@ -108,7 +108,7 @@ class Agent(object):
         q_values = self.model.forward(states)
         
         # Predict Q-Values for all new states from the sample
-        q_next = T.max(self.model.forward(states_), dim = 1).values
+        q_next = T.max(self.target.forward(states_), dim = 1).values
 
         # Replace the targets values with the according function
         targets[indices, actions] = rewards + self.gamma * q_next*(1 - dones)

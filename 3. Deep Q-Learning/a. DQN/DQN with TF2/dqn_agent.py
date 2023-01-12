@@ -22,7 +22,7 @@ def build_dqn(input_dims, n_actions, fc1_dims, fc2_dims):
 
 class Agent:
     def __init__(self, gamma, epsilon, lr, n_actions, input_dims, mem_size, batch_size, 
-                 eps_min=0.01, eps_dec=5e-7, fname='dqn_model.h5'):
+                 eps_min=0.01, eps_dec=5e-7, replace=100, fname='dqn_model.h5'):
         
         self.gamma = gamma
         self.epsilon = epsilon
@@ -35,16 +35,17 @@ class Agent:
         self.eps_min = eps_min
         self.eps_dec = eps_dec
         self.learn_step_counter = 0
+        self.replace_target_cnt = replace
 
         self.memory = ReplayBuffer(mem_size)
 
         self.model = build_dqn(input_dims, n_actions, 256, 256)
+        self.target = clone_model(self.model)
 
         self.model.compile(optimizer=Adam(learning_rate=lr), loss="mse")
+        self.target.compile(optimizer=Adam(learning_rate=lr), loss="mse")
 
         self.model_file = fname
-
-
 
 
     def store_transition(self, state, action, reward, state_, done):
@@ -89,18 +90,22 @@ class Agent:
         # Mini batch values
         states, actions, rewards, states_, dones = self.memory.mini_batch(self.batch_size)
         batch_index = np.arange(self.batch_size, dtype=np.int32)
-        
-        # Predict targets for all states from the sample
-        targets = self.model.predict(np.array(states))
-        
-        # Predict Q-Values for all new states from the sample
-        q_next = self.model.predict(np.array(states_))  
+
+        # Check if the target network needs to be updated
+        self.replace_target_network()
+
+        # Predict Q-Values for all new states from the sample --> target network
+        q_next = self.target.predict(np.array(states_))
+
+        # Predict targets for all states from the sample to perform update --> model
+        q_target = self.model.predict(np.array(states))
 
         # Replace the targets values with the according function
-        targets[batch_index, actions] = rewards + self.gamma * np.max(q_next, axis=1)*(1 - np.array([dones]))
-        
+        q_target[batch_index, actions] = rewards + self.gamma * np.max(q_next, axis=1)*(1 - np.array([dones]))
+
         # Fit the model based on the states and the updated targets for 1 epoch
-        self.model.fit(np.array(states), np.array(targets), epochs=1, verbose=0) 
+        self.model.fit(np.array(states), np.array(q_target), epochs=1, verbose=0)
+
 
         self.learn_step_counter += 1
         self.decrement_epsilon()
@@ -110,4 +115,4 @@ class Agent:
         self.model.save(self.model_file)
     
     def load_model(self):
-        self.model = load_model(self.model_file)
+        self.model = keras.model.load_model(self.model_file)
