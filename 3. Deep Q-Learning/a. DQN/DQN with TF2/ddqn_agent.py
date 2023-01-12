@@ -47,8 +47,6 @@ class Agent:
         self.model_file = fname
 
 
-
-
     def store_transition(self, state, action, reward, state_, done):
         """The following funtion is used to 'remember' the previously stated function in the replay buffer file"""
 
@@ -71,13 +69,7 @@ class Agent:
         model neural network, this replacement occurs every n steps"""
 
         if self.learn_step_counter > 0 and self.learn_step_counter % self.replace_target_cnt == 0:
-            weights = self.model.get_weights()
-            prev_weights_target = self.target.get_weights()
-
-            # Polyak averaging --> tau set to 0.01
-            new_weights = 0.01*weights + (1-0.01)*prev_weights_target
-            self.target.set_weights(new_weights)
-
+            self.target.set_weights(self.model.get_weights())
 
     def decrement_epsilon(self):
         """Funtion used to compute the decrement of epsilon"""
@@ -108,10 +100,10 @@ class Agent:
         q_next_t = self.target.predict(np.array(states_))
 
         # Extract the max actions
-        max_actions = np.argmax(q_next_t, axis=1)
+        max_actions = np.argmax(q_next, axis=1)
 
         # Replace the targets values with the according function
-        targets[batch_index, actions] = rewards + self.gamma * q_next[batch_index, max_actions]*(1-np.array([dones]))
+        targets[batch_index, actions] = rewards + self.gamma * q_next_t[batch_index, max_actions]*(1-np.array([dones]))
         
         # Fit the model based on the states and the updated targets for 1 epoch
         self.model.fit(np.array(states), np.array(targets), epochs=1, verbose=0) 
@@ -124,4 +116,4 @@ class Agent:
         self.model.save(self.model_file)
     
     def load_model(self):
-        self.model = keras.model.load_model(self.model_file)
+        self.model = keras.models.load_model(self.model_file)

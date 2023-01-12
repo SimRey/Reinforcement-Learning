@@ -115,4 +115,4 @@ class Agent:
         self.model.save(self.model_file)
     
     def load_model(self):
-        self.model = keras.model.load_model(self.model_file)
+        self.model = keras.models.load_model(self.model_file)
