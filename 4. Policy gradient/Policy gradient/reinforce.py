@@ -1,113 +1,108 @@
 import numpy as np
 import tensorflow as tf
 import tensorflow.keras as keras
-import tensorflow_probabil
+import tensorflow_probability as tfp
 
 from tensorflow.keras.layers import Dense
-from tensorflow.keras.models import Sequential, clone_model 
+from tensorflow.keras.models import Sequential 
 from tensorflow.keras.optimizers import Adam
-from replay_buffer import ReplayBuffer
 
 class PolicyGradientNetwork(keras.Model):
-    def __init__(self, n_actions, fc1_dims, fc2_dims):
+    def __init__(self, n_actions, fc1_dims, fc2_dims, fc3_dims, fc4_dims):
         super(PolicyGradientNetwork, self).__init__()
         self.fc1_dims = fc1_dims
         self.fc2_dims = fc2_dims
+        self.fc3_dims = fc3_dims
+        self.fc4_dims = fc4_dims
         self.n_actions = n_actions
 
         self.fc1 = Dense(self.fc1_dims, activation='relu')
         self.fc2 = Dense(self.fc2_dims, activation='relu')
+        self.fc3 = Dense(self.fc3_dims, activation='relu')
+        self.fc4 = Dense(self.fc4_dims, activation='relu')
         self.pi = Dense(self.n_actions, activation='softmax') # Policy layer
     
     def call(self, state):
         x = self.fc1(state)
         x = self.fc2(x)
+        x = self.fc3(x)
+        x = self.fc4(x)
 
         pi = self.pi(x)
 
         return pi # Returns policy
 
     
-
 class Agent:
-    def __init__(self, gamma, lr, n_actions, input_dims, mem_size, batch_size, 
-                 fname='dqn_model.h5'):
+    def __init__(self, gamma, lr, n_actions, fname='reinforce'):
         
         self.gamma = gamma
         self.lr = lr
         self.n_actions = n_actions
-        self.action_space = [i for i in range(n_actions)]
+        self.state_memory = []
+        self.reward_memory = []
+        self.action_memory = []
 
-        self.input_dims = input_dims
-        self.batch_size = batch_size
-        self.learn_step_counter = 0
-
-        self.memory = ReplayBuffer(mem_size)
-
-        self.policy = policy_NN(input_dims, n_actions, 256, 256)
-        self.policy.compile(optimizer=Adam(learning_rate=lr), loss="mse")
+        self.policy = PolicyGradientNetwork(self.n_actions, 512, 256, 128, 72)
+        self.policy.compile(optimizer=Adam(learning_rate=lr))
 
         self.model_file = fname
 
 
-    def store_transition(self, state, action, reward, state_, done):
-        """The following funtion is used to 'remember' the previously stated function in the replay buffer file"""
-
-        self.memory.store_transition(state, action, reward, state_, done)
+    def store_transition(self, state, action, reward):
+        """The following funtion is used to store the generated state, action and reward"""
+        self.state_memory.append(state)
+        self.reward_memory.append(reward)
+        self.action_memory.append(action)
 
 
     def choose_action(self, observation):
         """This function choses an action using the policy"""
 
-        probs = self.policy.predict(np.array([observation]))
+        state = tf.convert_to_tensor([observation], dtype=tf.float32)
+        probs = self.policy(state)
         action_probs = tfp.distributions.Categorical(probs=probs)
         action = action_probs.sample()
 
-        return action
-
-
-
-
-    def decrement_epsilon(self):
-        """Funtion used to compute the decrement of epsilon"""
-        if self.epsilon > self.eps_min:
-            self.epsilon -= self.eps_dec
-        else:
-            self.epsilon = self.eps_min
-
+        return action.numpy()[0] # To interact correct with gym environment
 
     def learn(self):
         """Funtion that describes the learning process of the RL-Agent"""
 
-        if len(self.memory.replay_buffer) < self.batch_size:
-            return
+        actions = tf.convert_to_tensor(self.action_memory, dtype=tf.float32)
+        rewards = np.array(self.reward_memory, dtype=np.float32)
 
-        # Mini batch values
-        states, actions, rewards, states_, dones = self.memory.mini_batch(self.batch_size)
-        batch_index = np.arange(self.batch_size, dtype=np.int32)
+        # Monte-Carlo reward function
+        G = np.zeros_like(rewards,)
+        for t in range(len(rewards)):
+            G_sum = 0
+            discount = 1
+            for k in range(t, len(rewards)):
+                G_sum += rewards[k]*discount
+                discount += self.gamma
+            G[t] = G_sum
+        
+        # Gradient calculations
+        with tf.GradientTape() as tape:
+            loss = 0
 
-        # Check if the target network needs to be updated
-        self.replace_target_network()
+            for idx, (g, state) in enumerate(zip(G, self.state_memory)):
+                state = tf.convert_to_tensor([state], dtype=tf.float32)
+                probs = self.policy(state)
+                action_probs = tfp.distributions.Categorical(probs=probs)
+                log_prob = action_probs.log_prob(actions[idx])
+                loss += -g*log_prob
+        
+        params = self.policy.trainable_variables
+        grads = tape.gradient(loss, params)
+        self.policy.optimizer.apply_gradients(zip(grads, params))
 
-        # Predict Q-Values for all new states from the sample --> target network
-        q_next = self.target.predict(np.array(states_))
-
-        # Predict targets for all states from the sample to perform update --> model
-        q_target = self.model.predict(np.array(states))
-
-        # Replace the targets values with the according function
-        q_target[batch_index, actions] = rewards + self.gamma * np.max(q_next, axis=1)*(1 - np.array([dones]))
-
-        # Fit the model based on the states and the updated targets for 1 epoch
-        self.model.fit(np.array(states), np.array(q_target), epochs=1, verbose=0)
-
-
-        self.learn_step_counter += 1
-        self.decrement_epsilon()
-
+        self.state_memory = []
+        self.action_memory = []
+        self.reward_memory = []
 
     def save_model(self):
-        self.model.save(self.model_file)
+        self.policy.save(self.model_file)
     
     def load_model(self):
-        self.model = keras.model.load_model(self.model_file)
+        self.policy = keras.models.load_model(self.model_file)
