@@ -21,6 +21,7 @@ class DeepQNetwork(nn.Module):
         self.fc1 = nn.Linear(*self.input_dims, self.fc1_dims)
         self.fc2 = nn.Linear(self.fc1_dims, self.fc2_dims)
         self.fc3 = nn.Linear(self.fc2_dims, self.n_actions)  
+        self.optimizer = optim.Adam(self.parameters(), lr=self.lr)
 
     def forward(self, x):
         x = F.relu(self.fc1(x))
@@ -49,11 +50,10 @@ class Agent(object):
 
         self.memory = ReplayBuffer(mem_size)
 
-        self.model = DeepQNetwork(self.lr, self.input_dims, 256, 256, self.n_actions)
-        self.target = DeepQNetwork(self.lr, self.input_dims, 256, 256, self.n_actions)
+        self.model = DeepQNetwork(self.lr, self.input_dims, 128, 128, self.n_actions)
+        self.target = DeepQNetwork(self.lr, self.input_dims, 128, 128, self.n_actions)
 
         self.criterion = nn.MSELoss()
-        self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
 
 
     def store_transition(self, state, action, reward, state_, done):
@@ -96,7 +96,7 @@ class Agent(object):
         if len(self.memory.replay_buffer) < self.batch_size:
             return
 
-        self.optimizer.zero_grad()
+        self.model.optimizer.zero_grad()
 
         self.replace_target_network()
 
@@ -115,7 +115,7 @@ class Agent(object):
 
         loss = self.criterion(targets, q_values)
         loss.backward()
-        self.optimizer.step()
+        self.model.optimizer.step()
         self.learn_step_counter += 1
 
         self.decrement_epsilon()
