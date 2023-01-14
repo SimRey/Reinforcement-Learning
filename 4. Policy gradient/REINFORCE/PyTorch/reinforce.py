@@ -58,8 +58,7 @@ class PolicyGradientAgent():
     def learn(self):
         self.policy.optimizer.zero_grad()
 
-        # G_t = R_t+1 + gamma * R_t+2 + gamma**2 * R_t+3
-        # G_t = sum from k=0 to k=T {gamma**k * R_t+k+1}
+        # Monte-Carlo reward process 
         G = np.zeros_like(self.reward_memory, dtype=np.float64)
         for t in range(len(self.reward_memory)):
             G_sum = 0
@@ -71,8 +70,8 @@ class PolicyGradientAgent():
         G = T.tensor(G, dtype=T.float)
         
         loss = 0
-        for g, logprob in zip(G, self.action_memory):
-            loss += -g * logprob
+        for idx, (g, logprob) in enumerate(zip(G, self.action_memory)):
+            loss += -g * logprob * self.gamma**idx
         loss.backward()
         self.policy.optimizer.step()
 
