@@ -10,7 +10,7 @@ class ActorCriticNetwork(nn.Module):
         self.fc1 = nn.Linear(*input_dims, fc1_dims)
         self.fc2 = nn.Linear(fc1_dims, fc2_dims)
         self.pi = nn.Linear(fc2_dims, n_actions)
-        self.v = nn.Linear(fc2_dims, 1)
+        self.v = nn.Linear(fc2_dims, n_actions)
         self.optimizer = optim.Adam(self.parameters(), lr=lr)
 
     def forward(self, state):
@@ -49,12 +49,19 @@ class Agent():
         state_ = T.tensor([state_], dtype=T.float)
         reward = T.tensor(reward, dtype=T.float)
 
-        _, critic_value = self.actor_critic.forward(state)
-        _, critic_value_ = self.actor_critic.forward(state_)
+        probabilities, Qw = self.actor_critic.forward(state)
+        _, Qw_dash = self.actor_critic.forward(state_)
+        Qw = T.squeeze(Qw)
+        Qw_dash = T.squeeze(Qw_dash)
+        probabilities = T.squeeze(probabilities)
 
-        delta = reward + self.gamma*critic_value_*(1-int(done)) - critic_value
+        action_probs = T.distributions.Categorical(probabilities)
+        action = action_probs.sample()
+        
+        delta = reward + self.gamma*T.max(Qw_dash)*(1-int(done)) - Qw[action]
+        advantage = reward + self.gamma*T.max(Qw_dash)*(1-int(done)) - sum([p*v for p,v in zip(probabilities, Qw)])
 
-        actor_loss = -(self.log_probs*delta)*self.gamma**n
+        actor_loss = -(self.log_probs*advantage)*self.gamma**n
         critic_loss = (delta**2)*self.gamma**n
 
         (actor_loss + critic_loss).backward()
