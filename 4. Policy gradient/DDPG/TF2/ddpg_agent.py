@@ -4,6 +4,8 @@ import tensorflow.keras as keras
 from tensorflow.keras.optimizers import Adam
 from replay_buffer import ReplayBuffer
 from networks import ActorNetwork, CriticNetwork
+from noise import OUActionNoise
+
 
 class Agent:
     def __init__(self, n_actions,
@@ -27,6 +29,7 @@ class Agent:
         self.max_action = env.action_space.high[0]
         self.min_action = env.action_space.low[0]
 
+        self.noise = OUActionNoise(mu=np.zeros(self.n_actions,))
         self.memory = ReplayBuffer(self.mem_size)        
 
         self.actor = ActorNetwork(n_actions=self.n_actions, fc1_dims=self.fc1_dims, fc2_dims=self.fc2_dims)
@@ -81,8 +84,7 @@ class Agent:
         state = tf.convert_to_tensor([observation], dtype=tf.float32)
         actions = self.actor(state)
         if not evaluate:
-            actions += tf.random.normal(shape=[self.n_actions],
-                                        mean=0.0, stddev=self.noise)
+            actions += tf.convert_to_tensor(self.noise(), dtype=tf.float32)
         # note that if the env has an action > 1, we have to multiply by
         # max action at some point
         actions = tf.clip_by_value(actions, self.min_action, self.max_action)

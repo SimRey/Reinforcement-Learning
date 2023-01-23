@@ -52,7 +52,7 @@ class Agent:
         mu = self.actor.forward(state)
         mu_prime = mu + T.tensor(self.noise(), dtype=T.float)
         self.actor.train() # after eval important to state
-
+        
         return mu_prime.detach().numpy()[0]
 
     def store_transition(self, state, action, reward, state_, done):
