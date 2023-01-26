@@ -1,6 +1,5 @@
 import tensorflow as tf
 import tensorflow.keras as keras
-import tensorflow_probability as tfp
 from tensorflow.keras.layers import Dense
 
 
@@ -43,38 +42,26 @@ class ValueNetwork(keras.Model):
 
 
 class ActorNetwork(keras.Model):
-    def __init__(self, max_action, fc1_dims=256, fc2_dims=256, n_actions=None):
+    def __init__(self, n_actions, layer_size=256, log_std_min=-20, log_std_max=2):
         super(ActorNetwork, self).__init__()
-        self.fc1_dims = fc1_dims
-        self.fc2_dims = fc2_dims
-        self.n_actions = n_actions
-        self.max_action = max_action
-        self.noise = 1e-6
+        self.log_std_min = log_std_min
+        self.log_std_max = log_std_max
 
-        self.fc1 = Dense(self.fc1_dims, activation='relu')
-        self.fc2 = Dense(self.fc2_dims, activation='relu')
-        self.mu = Dense(self.n_actions, activation=None)
-        self.sigma = Dense(self.n_actions, activation=None)
+        self.layer1 = Dense(layer_size, activation='relu')
+        self.layer2 = Dense(layer_size, activation='relu')
+        self.layer3 = Dense(layer_size, activation='relu')
 
-    def call(self, state):
-        prob = self.fc1(state)
-        prob = self.fc2(prob)
+        self.mean = Dense(n_actions, activation='linear')
+        self.log_std = Dense(n_actions, activation='linear')
 
-        mu = self.mu(prob)
-        sigma = self.sigma(prob)
-        # might want to come back and change this,
-        # perhaps tf plays more nicely with a sigma of ~0
-        sigma = tf.clip_by_value(sigma, self.noise, 1)
 
-        return mu, sigma
+    def call(self, inputs):
+        out = self.layer1(inputs)
+        out = self.layer2(out)
+        out = self.layer3(out)
 
-    def sample_normal(self, state):
-        mu, sigma = self.call(state)
-        probabilities = tfp.distributions.Normal(mu, sigma)
-        actions = probabilities.sample()  # + something else
-        action = tf.math.tanh(actions)*self.max_action
-        log_probs = probabilities.log_prob(actions)
-        log_probs -= tf.math.log(1-tf.math.pow(action, 2)+self.noise)
-        log_probs = tf.math.reduce_sum(log_probs, axis=1, keepdims=True)
-        return action, log_probs
-    
+        mean = self.mean(out)
+        log_std = self.log_std(out)
+        log_std = tf.keras.backend.clip(log_std, self.log_std_min, self.log_std_max)
+
+        return mean, log_std

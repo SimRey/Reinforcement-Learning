@@ -1,6 +1,7 @@
 import tensorflow as tf
 import numpy as np
 import tensorflow.keras as keras
+import tensorflow_probability as tfp
 from tensorflow.keras.optimizers import Adam
 from replay_buffer import ReplayBuffer
 from networks import ActorNetwork, CriticNetwork, ValueNetwork
@@ -29,8 +30,7 @@ class Agent:
         self.memory = ReplayBuffer(self.mem_size)        
 
         # Define the networks
-        self.actor = ActorNetwork(n_actions=self.n_actions, fc1_dims=self.fc1_dims, 
-                                  fc2_dims=self.fc2_dims, max_action=self.max_action)
+        self.actor = ActorNetwork(n_actions=self.n_actions)
         
         self.critic1 = CriticNetwork(fc1_dims=self.fc1_dims, fc2_dims=self.fc2_dims)
         self.critic2 = CriticNetwork(fc1_dims=self.fc1_dims, fc2_dims=self.fc2_dims)
@@ -62,10 +62,24 @@ class Agent:
     def store_transition(self, state, action, reward, state_, done):
         self.memory.store_transition(state, action, reward, state_, done)
 
+   
+    def sample_normal(self, state, epsilon=1e-6):
+        mean, log_std = self.actor(state)
+        std = tf.math.exp(log_std)
 
-    def choose_action(self, observation, evaluate=False):
-        state = tf.convert_to_tensor([observation], dtype=tf.float32)
-        actions, _ = self.actor.sample_normal(state)
+        normal = tfp.distributions.MultivariateNormalDiag(mean, std)
+        actions = normal.sample()
+        action = tf.math.tanh(actions)
+        log_probs = normal.log_prob(actions)
+        log_probs -= tf.math.log(1-tf.math.pow(action, 2)+epsilon)
+        log_probs = tf.math.reduce_sum(log_probs, axis=1, keepdims=True)
+        return action, log_probs
+            
+
+    def choose_action(self, observation):
+        state = tf.convert_to_tensor([observation])
+        actions, _ = self.sample_normal(state)
+
         return actions[0]
 
 
@@ -87,7 +101,7 @@ class Agent:
             value_ = self.value_target(states_)
             value_ = tf.squeeze(value_, 1)
 
-            current_policy_actions, log_probs = self.actor.sample_normal(states)
+            current_policy_actions, log_probs = self.sample_normal(states)
             log_probs = tf.squeeze(log_probs, 1)
         
             q1_new_pi = self.critic1(states, current_policy_actions)
@@ -102,12 +116,11 @@ class Agent:
     
         # Update actor network
         with tf.GradientTape() as tape:
-            new_policy_actions, log_probs = self.actor.sample_normal(states)
+            new_policy_actions, log_probs = self.sample_normal(states)
             log_probs = tf.squeeze(log_probs, 1)
             q1_new_policy = self.critic1(states, new_policy_actions)
             q2_new_policy = self.critic2(states, new_policy_actions)
-            critic_value = tf.squeeze(tf.math.minimum(
-                                        q1_new_policy, q2_new_policy), 1)
+            critic_value = tf.squeeze(tf.math.minimum(q1_new_policy, q2_new_policy), 1)
             actor_loss = log_probs - critic_value
             actor_loss = tf.math.reduce_mean(actor_loss)
         params = self.actor.trainable_variables
