@@ -1,67 +1,75 @@
-import torch as T
+import numpy as np
+import tensorflow as tf 
+import tensorflow.keras as keras
+from tensorflow.keras.optimizer import Adam
 from memory import PPOMemory
-from networks import ContinuousActorNetwork, ContinuousCriticNetwork
+from networks import ActorNetwork, CriticNetwork
+
 
 
 class Agent:
-    def __init__(self, n_actions, input_dims, gamma=0.99, alpha=3e-4,
-                 gae_lambda=0.95, policy_clip=0.2, batch_size=64, n_epochs=10):
+    def __init__(self, n_actions, gamma=0.99, alpha=3e-4, gae_lambda=0.95, policy_clip=0.2, 
+                 batch_size=64, n_epochs=10, chkpt_dir="models/"):
         self.gamma = gamma
+        self.alpha = alpha
         self.policy_clip = policy_clip
         self.n_epochs = n_epochs
         self.gae_lambda = gae_lambda
-        self.actor = ContinuousActorNetwork(n_actions, input_dims, alpha)
-        self.critic = ContinuousCriticNetwork(input_dims, alpha)
+        self.chkpt_dir = chkpt_dir
+        
+        self.actor = ActorNetwork(n_actions)
+        self.critic = CriticNetwork()
+        self.actor.complie(optimizer=Adam(learning_rate=self.alpha))
+        self.critic.complie(optimizer=Adam(learning_rate=self.alpha))
+        
         self.memory = PPOMemory(batch_size)
 
     def remember(self, state, state_, action, probs, reward, done):
         self.memory.store_memory(state, state_, action, probs, reward, done)
 
     def save_models(self):
-        self.actor.save_checkpoint()
-        self.critic.save_checkpoint()
+        self.actor.save(self.chkpt_dir + "actor")
+        self.critic.save(self.chkpt_dir + "critic")
 
     def load_models(self):
-        self.actor.load_checkpoint()
-        self.critic.load_checkpoint()
+        self.actor = keras.models.load_model(self.chkpt_dir + "actor")
+        self.critic = keras.models.load_model(self.chkpt_dir + "critic")
 
     def choose_action(self, observation):
-        with T.no_grad():
-            state = T.tensor([observation], dtype=T.float)
-            dist = self.actor(state)
-            action = dist.sample()
-            probs = dist.log_prob(action)
+        state = tf.convert_to_tensor([observation])
+        dist = self.actor(state)
+        action = dist.sample()
+        probs = dist.log_prob(action)
 
-        return action.numpy().flatten(), probs.numpy().flatten()
+        action = action.numpy()[0]
+        probs = probs.numpy()[0]
+
+        return action, probs
 
     def calc_adv_and_returns(self, memories):
         states, new_states, r, dones = memories
-        with T.no_grad():
-            values = self.critic(states)
-            values_ = self.critic(new_states)
-            deltas = r + self.gamma * values_ - values
-            deltas = deltas.flatten().numpy()
-            adv = [0]
-            for step in reversed(range(deltas.shape[0])):
-                advantage = deltas[step] + self.gamma * self.gae_lambda * adv[-1] * (1 - dones[step])
-                adv.append(advantage)
-            adv.reverse()
-            adv = adv[:-1]
-            adv = T.tensor(adv).float().unsqueeze(1)
-            # print('adv', adv)
-            returns = adv + values
-            # print('returns', returns)
-            adv = (adv - adv.mean()) / (adv.std()+1e-6)
+        values = self.critic(states)
+        print(values, values.shape)
+        values_ = self.critic(new_states)
+        deltas = r + self.gamma * values_ - values
+        deltas = deltas.numpy()[0]
+        adv = [0]
+        for step in reversed(range(deltas.shape[0])):
+            advantage = deltas[step] + self.gamma * self.gae_lambda * adv[-1] * (1 - dones[step])
+            adv.append(advantage)
+        adv.reverse()
+        adv = adv[:-1]
+        adv = np.array([adv], dtype=np.float64)
+        print('adv', adv, adv.shape)
+        returns = adv + values.numpy()
+        print('returns', returns, returns.shape)
+        adv = (adv - adv.mean()) / (adv.std()+1e-6)
         return adv, returns
 
     
     def learn(self):
         state_arr, new_state_arr, action_arr, old_prob_arr, reward_arr, dones_arr = self.memory.recall()
-        state_arr = T.tensor(state_arr, dtype=T.float)
-        action_arr = T.tensor(action_arr, dtype=T.float)
-        old_prob_arr = T.tensor(old_prob_arr, dtype=T.float)
-        new_state_arr = T.tensor(new_state_arr, dtype=T.float)
-        r = T.tensor(reward_arr, dtype=T.float).unsqueeze(1)
+        r = np.array([reward_arr], dtype=np.float64)
         adv, returns = self.calc_adv_and_returns((state_arr, new_state_arr, r, dones_arr))
         
         for epoch in range(self.n_epochs):
