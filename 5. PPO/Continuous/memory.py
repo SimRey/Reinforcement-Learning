@@ -1,6 +1,5 @@
 import numpy as np
 
-
 class PPOMemory:
     def __init__(self, batch_size):
         self.states = []
@@ -13,12 +12,8 @@ class PPOMemory:
         self.batch_size = batch_size
 
     def recall(self):
-        return np.array(self.states),\
-            np.array(self.new_states),\
-            np.array(self.actions),\
-            np.array(self.probs),\
-            np.array(self.rewards),\
-            np.array(self.dones)
+        return np.array(self.states), np.array(self.new_states), np.array(self.actions),\
+            np.array(self.probs), np.array(self.rewards), np.array(self.dones)
 
     def generate_batches(self):
         n_states = len(self.states)
