@@ -32,23 +32,25 @@ class Agent:
             dist = self.actor(state)
             action = dist.sample()
             probs = dist.log_prob(action)
-            action = [a for a in action.flatten().numpy()]
-        return action, probs.flatten().numpy()
+            probs = T.squeeze(dist.log_prob(action)).item()
+            action = T.squeeze(action).item()
+        
+        return action, probs
 
     def calc_adv_and_returns(self, memories):
         states, new_states, r, dones = memories
         with T.no_grad():
-            values = self.critic(states).squeeze()
-            values_ = self.critic(new_states).squeeze()
+            values = self.critic(states)
+            values_ = self.critic(new_states)
             deltas = r + self.gamma * values_ - values
-            deltas = deltas.numpy()
+            deltas = deltas.flatten().numpy()
             adv = [0]
             for step in reversed(range(deltas.shape[0])):
                 advantage = deltas[step] + self.gamma * self.gae_lambda * adv[-1] * (1 - dones[step])
                 adv.append(advantage)
             adv.reverse()
             adv = adv[:-1]
-            adv = T.tensor(adv)
+            adv = T.tensor(adv).float().unsqueeze(1)
             returns = adv + values
             adv = (adv - adv.mean()) / (adv.std()+1e-6)
         return adv, returns
@@ -71,7 +73,7 @@ class Agent:
 
                 dist = self.actor(states)
                 new_probs = dist.log_prob(actions)
-                prob_ratio = T.exp(new_probs.sum(1, keepdim=True) - old_probs.sum(1, keepdim=True))
+                prob_ratio = T.exp(new_probs - old_probs)
                 weighted_probs = adv[batch] * prob_ratio
                 weighted_clipped_probs = T.clamp(prob_ratio, 1-self.policy_clip, 1+self.policy_clip) * adv[batch]
                 
