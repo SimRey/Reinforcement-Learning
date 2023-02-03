@@ -1,6 +1,6 @@
 import torch as T
 from memory import PPOMemory
-from networks import ContinuousActorNetwork, ContinuousCriticNetwork
+from networks import DiscreteActorNetwork, DiscreteCriticNetwork
 
 
 class Agent:
@@ -10,8 +10,8 @@ class Agent:
         self.policy_clip = policy_clip
         self.n_epochs = n_epochs
         self.gae_lambda = gae_lambda
-        self.actor = ContinuousActorNetwork(n_actions, input_dims, alpha)
-        self.critic = ContinuousCriticNetwork(input_dims, alpha)
+        self.actor = DiscreteActorNetwork(n_actions, input_dims, alpha)
+        self.critic = DiscreteCriticNetwork(input_dims, alpha)
         self.memory = PPOMemory(batch_size)
 
     def remember(self, state, state_, action, probs, reward, done):
@@ -28,31 +28,31 @@ class Agent:
     def choose_action(self, observation):
         with T.no_grad():
             state = T.tensor([observation], dtype=T.float)
+
             dist = self.actor(state)
             action = dist.sample()
             probs = dist.log_prob(action)
-
-        return action.numpy().flatten(), probs.numpy().flatten()
+            action = [a for a in action.flatten().numpy()]
+        return action, probs.flatten().numpy()
 
     def calc_adv_and_returns(self, memories):
         states, new_states, r, dones = memories
         with T.no_grad():
-            values = self.critic(states)
-            values_ = self.critic(new_states)
+            values = self.critic(states).squeeze()
+            values_ = self.critic(new_states).squeeze()
             deltas = r + self.gamma * values_ - values
-            deltas = deltas.flatten().numpy()
+            deltas = deltas.numpy()
             adv = [0]
             for step in reversed(range(deltas.shape[0])):
                 advantage = deltas[step] + self.gamma * self.gae_lambda * adv[-1] * (1 - dones[step])
                 adv.append(advantage)
             adv.reverse()
             adv = adv[:-1]
-            adv = T.tensor(adv).float().unsqueeze(1)
+            adv = T.tensor(adv)
             returns = adv + values
             adv = (adv - adv.mean()) / (adv.std()+1e-6)
         return adv, returns
 
-    
     def learn(self):
         state_arr, new_state_arr, action_arr, old_prob_arr, reward_arr, dones_arr = self.memory.recall()
         state_arr = T.tensor(state_arr, dtype=T.float)
@@ -60,7 +60,7 @@ class Agent:
         old_prob_arr = T.tensor(old_prob_arr, dtype=T.float)
         new_state_arr = T.tensor(new_state_arr, dtype=T.float)
         r = T.tensor(reward_arr, dtype=T.float).unsqueeze(1)
-        adv, returns = self.calc_adv_and_returns((state_arr, new_state_arr, r, dones_arr))
+        adv, returns = self.calc_adv_and_returns((state_arr, new_state_arr, r, dones_arr))  
 
         for epoch in range(self.n_epochs):
             batches = self.memory.generate_batches()

@@ -1,10 +1,11 @@
 import tensorflow as tf 
 import tensorflow_probability as tfp 
-from tensorflow_probability.distributions import Beta
 import tensorflow.keras as keras
 from tensorflow.keras.layers import Dense
 
-class ActorNetwork(keras.Module):
+tfd = tfp.distributions
+
+class ActorNetwork(keras.Model):
     def __init__(self, n_actions, fc1_dims=256, fc2_dims=256):
         super(ActorNetwork, self).__init__()
         self.fc1_dims = fc1_dims
@@ -18,16 +19,16 @@ class ActorNetwork(keras.Module):
        
 
     def call(self, state):
-        x = self.fc1(x)
+        x = self.fc1(state)
         x = self.fc2(x)
         alpha = self.alpha(x) + 1.0
         beta = self.beta(x) + 1.0
-        dist = Beta(alpha, beta)
+        dist = tfd.Beta(alpha, beta)
         return dist
 
 
 
-class CriticNetwork(nn.Module):
+class CriticNetwork(keras.Model):
     def __init__(self, fc1_dims=256, fc2_dims=256):
         super(CriticNetwork, self).__init__()
         self.fc1_dims = fc1_dims
@@ -39,7 +40,7 @@ class CriticNetwork(nn.Module):
         
 
     def call(self, state):
-        x = self.fc1(x)
+        x = self.fc1(state)
         x = self.fc2(x)
         v = self.v(x)
 
