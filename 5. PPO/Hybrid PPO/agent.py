@@ -44,12 +44,12 @@ class Agent:
 
             # Discrete
             action_d = dist_d.sample()
-            probs_d = T.squeeze(dist.log_prob(action_d)).item()
+            probs_d = T.squeeze(dist_d.log_prob(action_d)).item()
             action_d = T.squeeze(action_d).item()
 
             # Continuous
             action_c = dist_c.sample()
-            probs_c = dist.log_prob(action_c)
+            probs_c = dist_c.log_prob(action_c)
             action_c = action_c.numpy().flatten()
             probs_c = probs_c.numpy().flatten()
 
@@ -92,7 +92,6 @@ class Agent:
 
         for epoch in range(self.n_epochs):
             batches = self.memory.generate_batches()
-            total_params = len(self.actor.parameters())
             for batch in batches:
                 states = state_arr[batch]
                 
@@ -101,15 +100,21 @@ class Agent:
                 actions = actions_d_arr[batch]
 
                 dist_d, _ = self.actor(states)
-                new_probs = dist.log_prob(actions)
-                prob_ratio = T.exp(new_probs.sum(1, keepdim=True) - old_probs.sum(1, keepdim=True))
+                new_probs = dist_d.log_prob(actions)
+                prob_ratio = T.exp(new_probs - old_probs)
                 weighted_probs = adv[batch] * prob_ratio
                 weighted_clipped_probs = T.clamp(prob_ratio, 1-self.policy_clip, 1+self.policy_clip) * adv[batch]
                 actor_loss = -T.min(weighted_probs, weighted_clipped_probs)
 
                 # Deactivate continuouse parameters
-                for param in reversed(self.actor.parameters()):
-                    for i in range(4):
+                total_params = sum([1 for param in self.actor.parameters()])-1
+                params_c = []
+                for j in range(4):
+                    val = total_params - j
+                    params_c.append(val)
+                
+                for i, param in enumerate(self.actor.parameters()):
+                    if i in params_c:
                         param.requires_grad = False
 
                 self.actor.optimizer.zero_grad()
@@ -126,19 +131,23 @@ class Agent:
                 actions = actions_c_arr[batch]
 
                 _, dist_c = self.actor(states)
-                new_probs = dist.log_prob(actions)
+                new_probs = dist_c.log_prob(actions)
                 prob_ratio = T.exp(new_probs.sum(1, keepdim=True) - old_probs.sum(1, keepdim=True))
                 weighted_probs = adv[batch] * prob_ratio
                 weighted_clipped_probs = T.clamp(prob_ratio, 1-self.policy_clip, 1+self.policy_clip) * adv[batch]
                 actor_loss = -T.min(weighted_probs, weighted_clipped_probs)
 
-                # Deactivate discrete parameters
-                for param in reversed(self.actor.parameters()):
-                    for i in range(6):
-                        if i < 4:
-                            continue
-                        else:
-                            param.requires_grad = False
+                # Deactivate continuouse parameters
+                total_params = sum([1 for param in self.actor.parameters()])-1
+                params_d = []
+                for j in range(6):
+                    if j >= 4:
+                        val = total_params - j
+                        params_d.append(val)
+                
+                for i, param in enumerate(self.actor.parameters()):
+                    if i in params_d:
+                        param.requires_grad = False
 
                 self.actor.optimizer.zero_grad()
                 actor_loss.mean().backward()
@@ -147,7 +156,6 @@ class Agent:
                 # Activate all parameters again
                 for param in self.actor.parameters():
                     param.requires_grad = True
-
 
                 # Critic network update
                 critic_value = self.critic(states)

@@ -7,13 +7,13 @@ from torch.distributions import Beta, Categorical
 
 
 class HybridActorNetwork(nn.Module):
-    def __init__(self, actions, input_dims, alpha,
+    def __init__(self, actions, input_dims, lr,
                  fc1_dims, fc2_dims, chkpt_dir='models/'):
         super(HybridActorNetwork, self).__init__()
 
         self.checkpoint_file = os.path.join(chkpt_dir,'hppo')
         self.input_dims = input_dims
-        self.alpha = alpha
+        self.lr = lr
         self.fc1_dims = fc1_dims
         self.fc2_dims = fc2_dims
         
@@ -21,7 +21,7 @@ class HybridActorNetwork(nn.Module):
         # Discrete actions
         self.d_actions = self.actions["discrete"].n
         # Continuous actions
-        self.c_actions = self.actions["discrete"].shape[0]
+        self.c_actions = self.actions["continuous"].shape[0]
 
         self.fc1 = nn.Linear(*self.input_dims, self.fc1_dims)
         self.fc2 = nn.Linear(self.fc1_dims, self.fc2_dims)
@@ -31,7 +31,7 @@ class HybridActorNetwork(nn.Module):
         self.alpha = nn.Linear(self.fc2_dims, self.c_actions)
         self.beta = nn.Linear(self.fc2_dims, self.c_actions)
 
-        self.optimizer = optim.Adam(self.parameters(), lr=self.alpha)
+        self.optimizer = optim.Adam(self.parameters(), lr=self.lr)
        
 
     def forward(self, state):
