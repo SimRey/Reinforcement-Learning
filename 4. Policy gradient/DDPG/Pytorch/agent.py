@@ -4,7 +4,7 @@ import torch as T
 import torch.nn as nn
 import torch.nn.functional as F
 from replay_buffer import ReplayBuffer
-from networks import ActorNetwork, CriticNetwork
+import torch.optim as optim
 from noise import OUActionNoise
 import math
 
@@ -42,20 +42,20 @@ class Q_Critic(nn.Module):
         self.fc2_dims = fc2_dims
         self.c_lr = c_lr
 
-        self.fc1 = nn.Linear(*self.state_dim + self.n_actions, self.fc1_dims)
+        self.fc1 = nn.Linear(*self.state_dim, self.fc1_dims)
+        self.action_value = nn.Linear(self.n_actions, self.fc1_dims)
         self.fc2 = nn.Linear(self.fc1_dims, self.fc2_dims)
         self.q = nn.Linear(self.fc2_dims, 1)
 
         self.optimizer = optim.Adam(self.parameters(), lr=self.c_lr)
     
     def forward(self, state, action):
-        sa = T.cat([state, action], 1)
-        sa = F.relu(self.fc1(sa))
+        state_value = self.fc1(state)
+        action_value = F.relu(self.action_value(action))
+        sa = F.relu(T.add(state_value, action_value))
         sa = F.relu(self.fc2(sa))
         sa = self.q(sa)
-        
         return sa
-
 
 class DDPG(object):
     def __init__(self, state_dim, n_actions,
