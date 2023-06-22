@@ -7,9 +7,9 @@ from replay_buffer import ReplayBuffer
 
 
 
-class DeepQNetwork(nn.Module):
+class Network(nn.Module):
     def __init__(self, lr, input_dims, fc1_dims, fc2_dims, n_actions):
-        super(DeepQNetwork, self).__init__()
+        super(Network, self).__init__()
 
         self.lr = lr
         self.input_dims = input_dims
@@ -31,7 +31,7 @@ class DeepQNetwork(nn.Module):
         return actions
 
 
-class Agent(object):
+class DQN(object):
     def __init__(self, gamma, epsilon, lr, n_actions, input_dims, mem_size, batch_size, 
                  eps_min=0.01, eps_dec=5e-7, replace=100):
     
@@ -50,8 +50,8 @@ class Agent(object):
 
         self.memory = ReplayBuffer(mem_size)
 
-        self.model = DeepQNetwork(self.lr, self.input_dims, 128, 128, self.n_actions)
-        self.target = DeepQNetwork(self.lr, self.input_dims, 128, 128, self.n_actions)
+        self.model = Network(self.lr, self.input_dims, 128, 128, self.n_actions)
+        self.target = Network(self.lr, self.input_dims, 128, 128, self.n_actions)
 
         self.criterion = nn.MSELoss()
 
@@ -119,3 +119,16 @@ class Agent(object):
         self.learn_step_counter += 1
 
         self.decrement_epsilon()
+    
+    
+    def save(self,episode):
+        T.save(self.model.state_dict(), f"./model/dqn{episode}.pth")
+    
+    def best_save(self):
+        T.save(self.model.state_dict(), f"./best_model/dqn.pth")
+    
+    def load(self,episode):
+        self.model.load_state_dict(T.load(f"./model/dqn{episode}.pth"))
+    
+    def load_best(self):
+        self.model.load_state_dict(T.load(f"./best_model/dqn.pth"))
