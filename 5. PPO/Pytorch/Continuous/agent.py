@@ -40,7 +40,7 @@ class BetaActor(nn.Module):
         return mode
 
 class GaussianActor(nn.Module):
-    def __init__(self, input_dims, n_actions, net_width):
+    def __init__(self, input_dims, n_actions, net_width, a_lr):
         super(GaussianActor, self).__init__()
         
         self.fc1 = nn.Linear(*input_dims, net_width)
@@ -107,7 +107,7 @@ class PPO(object):
         
         if self.dist == 'Beta':
             self.actor = BetaActor(self.input_dims, self.n_actions, self.net_width, self.a_lr)
-        elif self.dist == "Gs":
+        elif self.dist == "GS":
             self.actor = GaussianActor(self.input_dims, self.n_actions, self.net_width, self.a_lr)
         else: print('Dist Error')
 
