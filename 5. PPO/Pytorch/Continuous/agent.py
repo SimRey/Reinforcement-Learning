@@ -1,8 +1,6 @@
 import copy
-from memory import PPOMemory
 import numpy as np
-import torch as T
-import torch.optim as optim
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Beta,Normal
@@ -10,206 +8,297 @@ import math
 
 
 class BetaActor(nn.Module):
-    def __init__(self, input_dims, n_actions, net_width, a_lr):
+    def __init__(self, state_dim, action_dim, net_width, a_lr):
         super(BetaActor, self).__init__()
-        self.fc1 = nn.Linear(*input_dims, net_width)
-        self.fc2 = nn.Linear(net_width, net_width)
-        self.alpha = nn.Linear(net_width, n_actions)
-        self.beta = nn.Linear(net_width, n_actions)
 
-        self.optimizer = optim.Adam(self.parameters(), lr=a_lr)
+        self.state_dim = state_dim
+        self.action_dim = action_dim
+        self.net_width = net_width
+        self.a_lr = a_lr
+
+        self.fc1 = nn.Linear(self.state_dim, self.net_width)
+        self.fc2 = nn.Linear(self.net_width, self.net_width)
+        self.alpha = nn.Linear(self.net_width, self.action_dim)
+        self.beta = nn.Linear(self.net_width, self.action_dim)
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=self.a_lr)
     
-    def forward(self, state):
-        x = T.tanh(self.fc1(state))
-        x = T.tanh(self.fc2(x))
+    def forward(self, x):
+        x = torch.tanh(self.fc1(x))
+        x = torch.tanh(self.fc2(x))
+        
         alpha = F.softplus(self.alpha(x)) + 1.0
         beta = F.softplus(self.beta(x)) + 1.0
         
         return alpha, beta
     
     def get_dist(self,state):
-        alpha,beta = self.forward(state)
+        alpha, beta = self.forward(state)
         dist = Beta(alpha, beta)
-
         return dist
     
     def dist_mode(self,state):
         alpha, beta = self.forward(state)
         mode = (alpha) / (alpha + beta)
-
         return mode
 
-class GaussianActor(nn.Module):
-    def __init__(self, input_dims, n_actions, net_width, a_lr):
-        super(GaussianActor, self).__init__()
-        
-        self.fc1 = nn.Linear(*input_dims, net_width)
-        self.fc2 = nn.Linear(net_width, net_width)
-        self.mu = nn.Linear(net_width, n_actions)
-        self.sigma = nn.Linear(net_width, n_actions)
 
-        self.optimizer = optim.Adam(self.parameters(), lr=a_lr)
+class GaussianActor_musigma(nn.Module):
+    def __init__(self, state_dim, action_dim, net_width, a_lr):
+        super(GaussianActor_musigma, self).__init__()
+
+        self.state_dim = state_dim
+        self.action_dim = action_dim
+        self.net_width = net_width
+        self.a_lr = a_lr
+
+        self.fc1 = nn.Linear(self.state_dim, self.net_width)
+        self.fc2 = nn.Linear(self.net_width, self.net_width)
+        self.mu = nn.Linear(self.net_width, self.action_dim)
+        self.sigma = nn.Linear(self.net_width, self.action_dim)
+
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=self.a_lr)
     
-    def forward(self, state):
-        x = T.tanh(self.fc1(state))
-        x = T.tanh(self.fc2(x))
-        mu = F.sigmoid(self.mu(x))
+    def forward(self, x):
+        x = torch.tanh(self.fc1(x))
+        x = torch.tanh(self.fc2(x))
+        
+        mu = torch.sigmoid(self.mu(x))
         sigma = F.softplus(self.sigma(x))
         
         return mu, sigma
     
-    def get_dist(self, state):
-        mu,sigma = self.forward(state)
-        dist = Normal(mu,sigma)
-        
+    def get_dist(self,state):
+        mu, sigma = self.forward(state)
+        dist = Normal(mu, sigma)
         return dist
 
-class Critic(nn.Module):
-    def __init__(self, input_dims, net_width, c_lr):
-        super(Critic, self).__init__()
 
-        self.fc1 = nn.Linear(*input_dims, net_width)
-        self.fc2 = nn.Linear(net_width, net_width)
-        self.v = nn.Linear(net_width, 1)
+class GaussianActor_mu(nn.Module):
+    def __init__(self, state_dim, action_dim, net_width, a_lr, log_std=0):
+        super(GaussianActor_mu, self).__init__()
 
-        self.optimizer = optim.Adam(self.parameters(), lr=c_lr)
-        
-    def forward(self, state):
-        x = T.tanh(self.fc1(state))
-        x = T.tanh(self.fc2(x))
-        v = self.v(x)
-        
-        return v
-
-
-class PPO(object):
-    def __init__(self, input_dims, n_actions, gamma=0.99, gae_lambda=0.95, policy_clip=0.2, 
-        n_epochs=10, net_width=256, a_lr=3e-4, c_lr=3e-4, l2_reg=1e-3, dist='Beta',
-        batch_size=64, entropy_coef=0, entropy_coef_decay=0.9998):
-
-        self.input_dims = input_dims
-        self.n_actions = n_actions
-        self.gamma = gamma
-        self.gae_lambda = gae_lambda
-        self.policy_clip = policy_clip
-        self.n_epochs = n_epochs
+        self.state_dim = state_dim
+        self.action_dim = action_dim
         self.net_width = net_width
         self.a_lr = a_lr
+
+        self.fc1 = nn.Linear(self.state_dim, self.net_width)
+        self.fc2 = nn.Linear(self.net_width, self.net_width)
+        self.mu = nn.Linear(self.net_width, self.action_dim)
+        self.mu.weight.data.mul_(0.1)
+        self.mu.bias.data.mul_(0.0)
+        
+        self.action_log_std = nn.Parameter(torch.ones(1, action_dim) * log_std)
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=self.a_lr)
+    
+    def forward(self, x):
+        x = torch.relu(self.fc1(x))
+        x = torch.relu(self.fc2(x))
+        
+        mu = torch.sigmoid(self.mu(a))
+        return mu
+    
+    def get_dist(self,state):
+        mu = self.forward(state)
+        action_log_std = self.action_log_std.expand_as(mu)
+        action_std = torch.exp(action_log_std)
+        
+        dist = Normal(mu, action_std)
+        return dist
+
+
+class Critic(nn.Module):
+    def __init__(self, state_dim, net_width, c_lr):
+        super(Critic, self).__init__()
+
+        self.state_dim = state_dim
+        self.net_width = net_width
         self.c_lr = c_lr
-        self.l2_reg = l2_reg        
+        
+        self.fc1 = nn.Linear(self.state_dim, self.net_width)
+        self.fc2 = nn.Linear(self.net_width, self.net_width)
+        self.v = nn.Linear(self.net_width, 1)
+
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=self.c_lr)
+    
+    def forward(self, x):
+        x = torch.tanh(self.fc1(x))
+        x = torch.tanh(self.fc2(x))
+        v = self.v(x)
+        return v
+
+class PPO(object):
+    def __init__(self, state_dim, action_dim, env_with_Dead, gamma=0.99, gae_lambda=0.95,
+        clip_rate=0.2, n_epochs=10, net_width=256, lr=3e-4, l2_reg = 1e-3,
+        dist='Beta', optim_batch_size = 64, entropy_coef = 0, entropy_coef_decay = 0.9998):
+        
+        self.state_dim = state_dim
+        self.env_with_Dead = env_with_Dead
+        self.action_dim = action_dim
+        self.gamma = gamma
+        self.gae_lambda = gae_lambda
         self.dist = dist
-        self.batch_size = batch_size
+        self.clip_rate = clip_rate
+        self.n_epochs = n_epochs
+        self.net_width = net_width
+        self.lr = lr
+        self.l2_reg = l2_reg
+        self.optim_batch_size = optim_batch_size
         self.entropy_coef = entropy_coef
         self.entropy_coef_decay = entropy_coef_decay
 
-        self.memory = PPOMemory(self.batch_size)
+        self.data = []
 
-        
         if self.dist == 'Beta':
-            self.actor = BetaActor(self.input_dims, self.n_actions, self.net_width, self.a_lr)
-        elif self.dist == "GS":
-            self.actor = GaussianActor(self.input_dims, self.n_actions, self.net_width, self.a_lr)
-        else: print('Dist Error')
+            self.actor = BetaActor(self.state_dim, self.action_dim, self.net_width, self.lr)
+        elif self.dist == 'GS_ms':
+            self.actor = GaussianActor_musigma(self.state_dim, self.action_dim, self.net_width, self.lr)
+        elif self.dist == 'GS_m':
+            self.actor = GaussianActor_mu(self.state_dim, self.action_dim, self.net_width, self.lr)
+        else:
+            print('Dist Error')
+        
+        self.critic = Critic(self.state_dim, self.net_width, self.lr)
 
-        self.critic = Critic(self.input_dims, self.net_width, self.c_lr)
-    
     def select_action(self, state):#only used when interact with the env
-        with T.no_grad():
-            state = T.tensor([state], dtype=T.float)
+        with torch.no_grad():
+            state = torch.FloatTensor(state.reshape(1, -1))
             dist = self.actor.get_dist(state)
-            action = T.clamp(dist.sample(), 0, 1)
-            probs = dist.log_prob(action)
-
-        return action.numpy().flatten(), probs.numpy().flatten()
-    
-    def remember(self, state, state_, action, probs, reward, done):
-        self.memory.store_memory(state, state_, action, probs, reward, done)
-
-    def evaluate(self, state):#only used when evaluate the policy.Making the performance more stable
-        with T.no_grad():
-            state = T.tensor([state], dtype=T.float)
+            a = dist.sample()
+            
             if self.dist == 'Beta':
-                action = self.actor.dist_mode(state)
-            elif self.dist == 'GS':
-                action, _ = self.actor(state)
-            else:
-                print('Dist Error')
+                a = torch.clamp(a, 0, 1)
 
-        return action.numpy().flatten(), 0.0
+            logprob_a = dist.log_prob(a).cpu().numpy().flatten()
+            return a.cpu().numpy().flatten(), logprob_a
     
-    def calc_adv_and_returns(self, memories):
-        states, new_states, r, dones = memories
-        with T.no_grad():
-            values = self.critic(states)
-            values_ = self.critic(new_states)
-            deltas = r + self.gamma * values_ - values
-            deltas = deltas.flatten().numpy()
-            adv = [0]
-            for step in reversed(range(deltas.shape[0])):
-                advantage = deltas[step] + self.gamma * self.gae_lambda * adv[-1] * (1 - dones[step])
-                adv.append(advantage)
-            adv.reverse()
-            adv = adv[:-1]
-            adv = T.tensor(adv).float().unsqueeze(1)
-            returns = adv + values
-            adv = (adv - adv.mean()) / (adv.std()+1e-6)
-        return adv, returns
     
+    def evaluate(self, state):#only used when evaluate the policy.Making the performance more stable
+        with torch.no_grad():
+            state = torch.FloatTensor(state.reshape(1, -1))
+            if self.dist == 'Beta':
+                a = self.actor.dist_mode(state)
+            elif self.dist == 'GS_ms':
+                a,b = self.actor(state)
+            elif self.dist == 'GS_m':
+                a = self.actor(state)
+            return a.cpu().numpy().flatten(),0.0
     
     def train(self):
         self.entropy_coef*=self.entropy_coef_decay
-        state_arr, new_state_arr, action_arr, old_prob_arr, reward_arr, dones_arr = self.memory.recall()
-
-        state_arr, action_arr, old_prob_arr, new_state_arr, r = T.tensor(state_arr, dtype=T.float), \
-            T.tensor(action_arr, dtype=T.float), T.tensor(old_prob_arr, dtype=T.float), \
-                T.tensor(new_state_arr, dtype=T.float), T.tensor(reward_arr, dtype=T.float).unsqueeze(1)
-
-        adv, returns = self.calc_adv_and_returns((state_arr, new_state_arr, r, dones_arr))
-
-        for epoch in range(self.n_epochs):
-            batches = self.memory.generate_batches()
-            
-            for batch in batches:
-                states = state_arr[batch]
-                old_probs = old_prob_arr[batch]
-                actions = action_arr[batch]
-                
-                dist = self.actor.get_dist(states)
-                dist_entropy = dist.entropy().sum(1, keepdim=True)
-                new_probs = dist.log_prob(actions)
-                prob_ratio = T.exp(new_probs.sum(1, keepdim=True) - old_probs.sum(1, keepdim=True))
-
-                
-                weighted_probs = adv[batch] * prob_ratio
-                weighted_clipped_probs = T.clamp(prob_ratio, 1-self.policy_clip, 1+self.policy_clip) * adv[batch]
-                
-                actor_loss = -T.min(weighted_probs, weighted_clipped_probs) - self.entropy_coef * dist_entropy
-
-                self.actor.optimizer.zero_grad()
-                actor_loss.mean().backward()
-                T.nn.utils.clip_grad_norm_(self.actor.parameters(), 40)
-                self.actor.optimizer.step()
-
-                critic_value = self.critic(states)
-                critic_loss = (critic_value - returns[batch]).pow(2).sum()* self.l2_reg
-                self.critic.optimizer.zero_grad()
-                critic_loss.backward()
-                self.critic.optimizer.step()
-        
-        self.memory.clear_memory()
+        s, a, r, s_prime, logprob_a, dones, dws = self.make_batch()
     
-    def save(self,episode):
-        T.save(self.critic.state_dict(), f"./model/ppo_critic{episode}.pth")
-        T.save(self.actor.state_dict(), f"./model/ppo_actor{episode}.pth")
+    
+        ''' Use TD+GAE+LongTrajectory to compute Advantage and TD target'''
+        with torch.no_grad():
+            vs = self.critic(s)
+            vs_ = self.critic(s_prime)
+            
+            '''dw for TD_target and Adv'''
+            deltas = r + self.gamma * vs_ * (1 - dws) - vs
+            
+            deltas = deltas.cpu().flatten().numpy()
+            adv = [0]
+            
+            '''done for GAE'''
+            for dlt, done in zip(deltas[::-1], dones.cpu().flatten().numpy()[::-1]):
+                advantage = dlt + self.gamma * self.gae_lambda * adv[-1] * (1 - done)
+                adv.append(advantage)
+            adv.reverse()
+            adv = copy.deepcopy(adv[0:-1])
+            adv = torch.tensor(adv).unsqueeze(1).float()
+            td_target = adv + vs
+            adv = (adv - adv.mean()) / ((adv.std()+1e-8))
+        
+        """Slice long trajectopy into short trajectory and perform mini-batch PPO update"""
+        optim_iter_num = int(math.ceil(s.shape[0] / self.optim_batch_size))
+        for i in range(self.n_epochs):
+            
+            #Shuffle the trajectory, Good for training
+            perm = np.arange(s.shape[0])
+            np.random.shuffle(perm)
+            perm = torch.LongTensor(perm)
+            s, a, td_target, adv, logprob_a = s[perm].clone(), a[perm].clone(), \
+                td_target[perm].clone(), adv[perm].clone(), logprob_a[perm].clone()
+            
+            '''update the actor'''
+            for i in range(optim_iter_num):
+                index = slice(i * self.optim_batch_size, min((i + 1) * self.optim_batch_size, s.shape[0]))
+                distribution = self.actor.get_dist(s[index])
+                dist_entropy = distribution.entropy().sum(1, keepdim=True)
+                logprob_a_now = distribution.log_prob(a[index])
+                ratio = torch.exp(logprob_a_now.sum(1,keepdim=True) - logprob_a[index].sum(1,keepdim=True))  # a/b == exp(log(a)-log(b))
+                
+                surr1 = ratio * adv[index]
+                surr2 = torch.clamp(ratio, 1 - self.clip_rate, 1 + self.clip_rate) * adv[index]
+                a_loss = -torch.min(surr1, surr2) - self.entropy_coef * dist_entropy
+                
+                self.actor.optimizer.zero_grad()
+                a_loss.mean().backward()
+                torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 0.5)
+                self.actor.optimizer.step()
+            
+            '''update the critic'''
+            for i in range(optim_iter_num):
+                index = slice(i * self.optim_batch_size, min((i + 1) * self.optim_batch_size, s.shape[0]))
+                c_loss = (self.critic(s[index]) - td_target[index]).pow(2).mean()
+                for name,param in self.critic.named_parameters():
+                    if 'weight' in name:
+                        c_loss += param.pow(2).sum() * self.l2_reg
+                
+                self.critic.optimizer.zero_grad()
+                c_loss.backward()
+                self.critic.optimizer.step()
+    
+    def make_batch(self):
+        s_lst, a_lst, r_lst, s_prime_lst, logprob_a_lst, done_lst, dw_lst = [], [], [], [], [], [], []
+        for transition in self.data:
+            s, a, r, s_prime, logprob_a, done, dw = transition
+            
+            s_lst.append(s)
+            a_lst.append(a)
+            logprob_a_lst.append(logprob_a)
+            r_lst.append([r])
+            s_prime_lst.append(s_prime)
+            done_lst.append([done])
+            dw_lst.append([dw])
+        
+        if not self.env_with_Dead:
+            dw_lst = (np.array(dw_lst)*False).tolist()
+        
+        self.data = [] #Clean history trajectory
+        
+        
+        '''list to tensor'''
+        with torch.no_grad():
+            s, a, r, s_prime, logprob_a, dones, dws = \
+                torch.tensor(s_lst, dtype=torch.float), \
+                torch.tensor(a_lst, dtype=torch.float), \
+                torch.tensor(r_lst, dtype=torch.float), \
+                torch.tensor(s_prime_lst, dtype=torch.float), \
+                torch.tensor(logprob_a_lst, dtype=torch.float), \
+                torch.tensor(done_lst, dtype=torch.float), \
+                torch.tensor(dw_lst, dtype=torch.float),
+        
+        return s, a, r, s_prime, logprob_a, dones, dws
+    
+    
+    def put_data(self, transition):
+        self.data.append(transition)
+    
+    def save(self, episode):
+        torch.save(self.critic.state_dict(), f"./model/ppo_critic{episode}.pth")
+        torch.save(self.actor.state_dict(), f"./model/ppo_actor{episode}.pth")
     
     def best_save(self):
-        T.save(self.critic.state_dict(), f"./best_model/ppo_critic.pth")
-        T.save(self.actor.state_dict(), f"./best_model/ppo_actor.pth")
+        torch.save(self.critic.state_dict(), f"./best_model/ppo_critic.pth")
+        torch.save(self.actor.state_dict(), f"./best_model/ppo_actor.pth")
     
     def load(self,episode):
-        self.critic.load_state_dict(T.load(f"./model/ppo_critic{episode}.pth"))
-        self.actor.load_state_dict(T.load(f"./model/ppo_actor{episode}.pth"))
+        self.critic.load_state_dict(torch.load(f"./model/ppo_critic{episode}.pth"))
+        self.actor.load_state_dict(torch.load(f"./model/ppo_actor{episode}.pth"))
     
     def load_best(self):
-        self.critic.load_state_dict(T.load(f"./best_model/ppo_critic.pth"))
-        self.actor.load_state_dict(T.load(f"./best_model/ppo_actor.pth"))
+        self.critic.load_state_dict(torch.load(f"./best_model/ppo_critic.pth"))
+        self.actor.load_state_dict(torch.load(f"./best_model/ppo_actor.pth"))
+
