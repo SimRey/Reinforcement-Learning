@@ -53,7 +53,6 @@ class HybridActorNetwork(nn.Module):
 
         # Discrete distribution
         dist_d = Categorical(pi)
-
         # Continuous distribution
         dist_c = Beta(*ab)
         return dist_d, dist_c
@@ -98,6 +97,7 @@ class PPO(object):
         self.env_with_Dead = env_with_Dead
         self.s_dim = state_dim
         self.actions = actions
+        self.acts_dims = self.actions["continuous"].shape[0]
         self.gamma = gamma
         self.gae_lambda = gae_lambda
         self.net_width = net_width
@@ -122,13 +122,12 @@ class PPO(object):
 
     def select_action(self, state):#only used when interact with the env
         with torch.no_grad():
-            state = torch.tensor([state], dtype=torch.float)
+            state = torch.tensor(state, dtype=torch.float)
             pi, _ = self.actor(state)
             dist_d, dist_c = self.actor.get_dist(state)
 
             # Discrete
             action_d = dist_d.sample().item()
-            pi = torch.squeeze(pi)
             probs_d = pi[action_d].item()
 
             # Continuous
@@ -145,7 +144,7 @@ class PPO(object):
     def evaluate(self, state):
         '''Deterministic Policy'''
         with torch.no_grad():
-            state = torch.tensor([state], dtype=torch.float)
+            state = torch.tensor(state, dtype=torch.float)
             pi,_ = self.actor.forward(state)
             a_d = torch.argmax(pi).item()
 
@@ -210,7 +209,6 @@ class PPO(object):
                 prob_d, _ = self.actor(s[index], dim=1)
                 dist_d, _ = self.actor.get_dist(s[index])
                 entropy_d = dist_d.entropy().sum(0, keepdim=True)
-                acts_d = torch.reshape(acts_d, (-1, 1))
                 logits_d = prob_d.gather(1, acts_d[index])
                 ratio = torch.exp(torch.log(logits_d) - torch.log(logprob_d[index]))
 
@@ -245,7 +243,7 @@ class PPO(object):
                 _, dist_c = self.actor.get_dist(s[index])
                 entropy_c = dist_c.entropy().sum(0, keepdim=True)
                 logits_c = dist_c.log_prob(acts_c[index])
-                ratio = torch.exp(logits_c.sum(0,keepdim=True) - logprob_c[index].sum(0,keepdim=True))
+                ratio = torch.exp(logits_c.sum(1,keepdim=True) - logprob_c[index].sum(1,keepdim=True))
 
                 surr1 = -ratio * adv[index]
                 surr2 = -torch.clamp(ratio, 1 - self.policy_clip, 1 + self.policy_clip) * adv[index]
@@ -284,27 +282,20 @@ class PPO(object):
 
         
     def make_batch(self):
+        l = len(self.data)
         s_lst, acts_d_lst, acts_c_lst, r_lst, s_prime_lst, logprob_d_lst, logprob_c_lst,\
-            done_lst, dw_lst = [], [], [], [], [], [], [], [], []
-        
-        for transition in self.data:
-            s, acts_d, acts_c, r, s_prime, logprob_d, logprob_c, done, dw = transition
+            done_lst, dw_lst = np.zeros((l,self.s_dim)),  np.zeros((l, 1)),  np.zeros((l,self.acts_dims)),\
+                np.zeros((l,1)), np.zeros((l,self.s_dim)), np.zeros((l, 1)),  np.zeros((l,self.acts_dims)),\
+                    np.zeros((l,1)), np.zeros((l,1))
             
-            s_lst.append(s)
-            acts_d_lst.append(acts_d)
-            acts_c_lst.append(acts_c)
-            logprob_d_lst.append(logprob_d)
-            logprob_c_lst.append(logprob_c)
-            r_lst.append([r])
-            s_prime_lst.append(s_prime)
-            done_lst.append([done])
-            dw_lst.append([dw])
+        for i,transition in enumerate(self.data):
+            s_lst[i], acts_d_lst[i], acts_c_lst[i], r_lst[i], s_prime_lst[i], logprob_d_lst[i], logprob_c_lst[i],\
+            done_lst[i], dw_lst[i] = transition
         
         if not self.env_with_Dead:
-            dw_lst = (np.array(dw_lst)*False).tolist()
-        
-        self.data = [] #Clean history trajectory
+            dw_lst *=False
 
+        self.data = [] #Clean history trajectory
 
         '''list to tensor'''
         with torch.no_grad():

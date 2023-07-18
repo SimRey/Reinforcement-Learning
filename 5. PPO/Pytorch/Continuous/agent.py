@@ -251,23 +251,21 @@ class PPO(object):
                 self.critic.optimizer.step()
     
     def make_batch(self):
-        s_lst, a_lst, r_lst, s_prime_lst, logprob_a_lst, done_lst, dw_lst = [], [], [], [], [], [], []
-        for transition in self.data:
-            s, a, r, s_prime, logprob_a, done, dw = transition
+        l = len(self.data)
+        s_lst, a_lst, r_lst, s_prime_lst, logprob_a_lst, done_lst, dw_lst = \
+            np.zeros((l,self.state_dim)), np.zeros((l,self.action_dim)), np.zeros((l,1)),\
+                np.zeros((l,self.state_dim)), np.zeros((l,self.action_dim)), np.zeros((l,1)), np.zeros((l,1))
             
-            s_lst.append(s)
-            a_lst.append(a)
-            logprob_a_lst.append(logprob_a)
-            r_lst.append([r])
-            s_prime_lst.append(s_prime)
-            done_lst.append([done])
-            dw_lst.append([dw])
+        for i,transition in enumerate(self.data):
+            s_lst[i], a_lst[i], r_lst[i], s_prime_lst[i], logprob_a_lst[i], done_lst[i], dw_lst[i] = transition
         
         if not self.env_with_Dead:
-            dw_lst = (np.array(dw_lst)*False).tolist()
-        
-        self.data = [] #Clean history trajectory
-        
+            '''Important!!!'''
+            # env_without_DeadAndWin: deltas = r + self.gamma * vs_ - vs
+            # env_with_DeadAndWin: deltas = r + self.gamma * vs_ * (1 - dw) - vs
+            dw_lst *=False
+
+        self.data = [] #Clean history trajectory      
         
         '''list to tensor'''
         with torch.no_grad():
